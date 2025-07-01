@@ -1,98 +1,166 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+# 📊 Ruklo Test - Documentación de Decisiones Técnicas
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## 🏗️ Arquitectura Elegida
 
-## Description
+### 🔧 Patrón Modular con NestJS
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+El proyecto está organizado en módulos separados para mejorar el mantenimiento, la escalabilidad y el testing.
 
-## Project setup
+- `Events`: Carga y gestión de datos de eventos
+- `Benefits`: Lógica de negocio para otorgar beneficios
+- `Analytics`: Generación de reportes y análisis de transacciones
 
-```bash
-$ npm install
+---
+
+## ✅ Parte 1 - Beneficios por Visitas Consecutivas
+
+### ✔️ Implementado
+
+- **Agrupación de eventos** por `client_id` y `store_id`
+- **Orden temporal** por `timestamp`
+- **Contador en memoria** de visitas consecutivas (reiniciado por recargas)
+- **Creación de entidad `Benefit`** si se cumplen 5 visitas seguidas sin recarga
+- **Estructura de datos clara y trazable**
+
+```ts
+class Benefit {
+  id: string;
+  client_id: string;
+  store_id: string;
+  type: string;
+  description: string;
+  awarded_at: Date;
+  qualifying_events: string[];
+}
 ```
 
-## Compile and run the project
+---
 
-```bash
-# development
-$ npm run start
+## ✅ Parte 2 - Historial de Transacciones con Promedios Semanales
 
-# watch mode
-$ npm run start:dev
+### ✔️ Implementado
 
-# production mode
-$ npm run start:prod
+- Agrupación de eventos por tipo (`visit` y `recharge`)
+- Cálculo semanal basado en `timestamp`
+- Inclusión de semanas sin recargas (promedio 0)
+- Formato de semana consistente: `YYYY-WW`
+
+```ts
+interface ClientTransactionHistory {
+  client_id: string;
+  visits: {
+    total: number;
+    events: EventData[];
+  };
+  recharges: {
+    total: number;
+    totalAmount: number;
+    events: EventData[];
+    weeklyData: WeeklyRechargeData[];
+  };
+}
 ```
 
-## Run tests
+---
 
-```bash
-# unit tests
-$ npm run test
+## ⚠️ Limitaciones Actuales
 
-# e2e tests
-$ npm run test:e2e
+### Parte 1: Beneficios
 
-# test coverage
-$ npm run test:cov
+- `Memoria`: El almacenamiento de beneficios es volátil (no persistente)
+- `Concurrencia`: No hay manejo para eventos simultáneos
+- `Escalabilidad`: Complejidad `O(n²)` por cliente y tienda
+- `Persistencia`: No se guardan estados intermedios ni históricos
+
+### Parte 2: Analytics
+
+- `Tiempo real`: No hay cacheo de resultados ya calculados
+- `Memoria`: Todo se mantiene en RAM
+- `Consultas`: No hay preprocesamiento para consultas repetidas
+
+---
+
+## 🚀 Arquitectura Recomendada para Escalabilidad
+
+### 1. Base de Datos
+
+Uso de PostgreSQL para almacenar y consultar eventos de forma eficiente.
+
+```sql
+CREATE TABLE events (
+    id SERIAL PRIMARY KEY,
+    client_id VARCHAR(50) NOT NULL,
+    store_id VARCHAR(50) NOT NULL,
+    type VARCHAR(10) NOT NULL,
+    amount DECIMAL(10,2),
+    timestamp TIMESTAMP NOT NULL,
+    processed_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Índices para acelerar consultas
+CREATE INDEX idx_events_client_store_time ON events(client_id, store_id, timestamp);
+CREATE INDEX idx_events_timestamp ON events(timestamp);
+CREATE INDEX idx_events_type ON events(type);
 ```
 
-## Deployment
+---
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+### 2. Sistema de Colas
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Procesamiento asincrónico con Redis y BullMQ:
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+- `Batching`: Procesar eventos en lotes de 1000
+- `Retry`: Manejo de fallos con backoff exponencial
+- `Workers`: Escalables horizontalmente
+
+---
+
+### 3. Caché Estratégico
+
+Uso de Redis para guardar estados temporales por cliente + tienda:
+
+```ts
+const visitCounter = await redis.hget(`visits:${clientId}:${storeId}`, 'count');
+const lastEventType = await redis.hget(`visits:${clientId}:${storeId}`, 'lastType');
+
+if (event.type === 'recharge') {
+  await redis.del(`visits:${clientId}:${storeId}`);
+}
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+---
 
-## Resources
+### 4. Agregaciones Pre-calculadas
 
-Check out a few resources that may come in handy when working with NestJS:
+- **Tablas de resumen** semanales o mensuales
+- **Views materializadas** para acelerar consultas analíticas
+- **ETL Jobs** nocturnos que actualizan estadísticas
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+---
 
-## Support
+### 5. Monitoreo y Observabilidad
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+- `Métricas`: Eventos por segundo, latencia, errores
+- `Alertas`: Fallos, saturación de colas, demoras
+- `Dashboards`: Visualización en tiempo real
 
-## Stay in touch
+---
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
 
-## License
+## 🔧 Stack Tecnológico Recomendado para Producción
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+| Capa | Herramienta |
+|------|-------------|
+| Backend | NestJS + TypeScript |
+| Base de Datos | PostgreSQL (con particionado por fecha) |
+| Caché | Redis |
+| Colas | BullMQ |
+| Monitoreo |  Grafana |
+| Logging | Winston + ELK Stack |
+
+---
+
+## 🧠 Conclusión
+
+Las propuestas de escalabilidad están pensadas para escenarios reales de alto tráfico y volumen.
